@@ -1,8 +1,5 @@
 """
 StudySync -- Find a Study Spot (Ticket 3, Tinker 3B).
-
-TICKET: none of the ranking logic is implemented yet -- every function
-below is a stub.
 """
 
 import csv
@@ -15,9 +12,14 @@ def load_study_spots(csv_path: str) -> list:
     Load study spots from a CSV into a list of dicts, converting
     "distance_miles" to float and "seats_available" to int.
     """
-    # TODO: use csv.DictReader to read csv_path into a list of dicts.
-    # TODO: convert row["distance_miles"] to float and row["seats_available"] to int for each row.
-    raise NotImplementedError
+    with open(csv_path, newline='') as f:
+        reader = csv.DictReader(f)
+        spots = []
+        for row in reader:
+            row["distance_miles"] = float(row["distance_miles"])
+            row["seats_available"] = int(row["seats_available"])
+            spots.append(row)
+    return spots
 
 
 def score_study_spot(profile: dict, spot: dict) -> tuple:
@@ -29,11 +31,41 @@ def score_study_spot(profile: dict, spot: dict) -> tuple:
     Return (score, reasons) where reasons is a list of short strings
     explaining what contributed to the score, e.g. ["quiet enough", "close enough"].
     """
-    # TODO: implement additive/weighted scoring using at least noise_level
-    # (compare using NOISE_ORDER), distance_miles vs max_distance, and
-    # seats_available vs min_seats. Append a short string to `reasons` for
-    # each factor that contributed, whether it helped or hurt the score.
-    raise NotImplementedError
+    score = 0.0
+    reasons = []
+
+    # Noise: weighted highest, since a too-loud spot is hard to study in.
+    # Bonus of 0.5 per level quieter than the student's limit.
+    quieter_by = NOISE_ORDER[profile["max_noise"]] - NOISE_ORDER[spot["noise_level"]]
+    if quieter_by >= 0:
+        score += 2.0 + 0.5 * quieter_by
+        reasons.append("quieter than needed" if quieter_by > 0 else "quiet enough")
+    else:
+        score -= 2.0
+        reasons.append("too noisy")
+
+    # Distance: closer than the limit earns more.
+    if spot["distance_miles"] <= profile["max_distance"]:
+        score += 1.0 + (profile["max_distance"] - spot["distance_miles"])
+        reasons.append("close enough")
+    else:
+        score -= 1.0
+        reasons.append("too far")
+
+    # Seats: 0.1 per extra seat, capped at 0.5.
+    if spot["seats_available"] >= profile["min_seats"]:
+        extra_seats = spot["seats_available"] - profile["min_seats"]
+        score += 1.5 + min(0.1 * extra_seats, 0.5)
+        reasons.append("enough seats")
+    else:
+        score -= 1.0
+        reasons.append("not enough seats")
+
+    # Scale so a perfect spot (quietest, 0 miles, 5+ extra seats) scores 5.0.
+    max_score = (2.0 + 0.5 * NOISE_ORDER[profile["max_noise"]]) + (1.0 + profile["max_distance"]) + 2.0
+    score = 5.0 * score / max_score
+
+    return (score, reasons)
 
 
 def rank_study_spots(profile: dict, spots: list, k: int = 3) -> list:
@@ -41,16 +73,17 @@ def rank_study_spots(profile: dict, spots: list, k: int = 3) -> list:
     Score every study spot, then return the top k as (spot, score, reasons)
     tuples, sorted by score descending.
     """
-    # TODO: score every spot with score_study_spot(), then use
-    # sorted(..., key=..., reverse=True)[:k] to keep only the top k.
-    raise NotImplementedError
+    scored = []
+    for spot in spots:
+        score, reasons = score_study_spot(profile, spot)
+        scored.append((spot, score, reasons))
+    return sorted(scored, key=lambda item: item[1], reverse=True)[:k]
 
 
 def format_results(ranked: list) -> None:
     """Print each ranked study spot with its score and reasons, one line each."""
-    # TODO: for each (spot, score, reasons) tuple, print a readable line, e.g.:
-    # "1. Innovation Commons -- Score: 5.0 -- Because: quiet enough, close enough"
-    raise NotImplementedError
+    for i, (spot, score, reasons) in enumerate(ranked, start=1):
+        print(f"{i}. {spot['name']} -- Score: {score:.1f} -- Because: {', '.join(reasons)}")
 
 
 def render_study_spot_tab():
